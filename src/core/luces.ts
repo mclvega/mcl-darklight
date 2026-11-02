@@ -50,7 +50,7 @@ export interface Luz {
   nivel: number;
   /** Segundos de combustible que le quedan. */
   combustible: number;
-  /** La Hoguera madre nunca se apaga del todo. */
+  /** La Hoguera madre nunca se apaga del todo (queda en brasa, pero la brasa no protege). */
   madre: boolean;
   /** Último combustible usado: da el color de la llama. */
   tipo: IdCombustible;
@@ -77,6 +77,9 @@ export function radioLuz(l: Luz): number {
 }
 
 export const encendida = (l: Luz) => radioLuz(l) > 0;
+
+/** Solo una luz con fuego vivo protege: la brasa de la madre se ve, pero no frena a los monstruos. */
+export const protege = (l: Luz) => l.combustible > 0;
 
 /** Segundos de combustible que se gastan por segundo: las mejoras ahorran. */
 export const consumo = (nivel: number) => 1 - (nivel - 1) * 0.12;

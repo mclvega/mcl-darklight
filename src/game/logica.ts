@@ -1,7 +1,7 @@
 import { escalaNoche, type Modo } from '../core/difficulty';
 import {
-  avivar, AVISO_APAGADO, COMBUSTIBLES, consumir, costeConstruir, costeMejora, encendida, inventarioVacio, MATERIALES_ORDEN, NIVEL_MAX_LUZ,
-  pagar, quema, radioLuz, textoCoste, type IdCombustible, type IdMaterial, type Inventario, type Luz, MATERIALES,
+  avivar, AVISO_APAGADO, COMBUSTIBLES, consumir, costeConstruir, costeMejora, inventarioVacio, MATERIALES_ORDEN, NIVEL_MAX_LUZ,
+  pagar, protege, quema, radioLuz, textoCoste, type IdCombustible, type IdMaterial, type Inventario, type Luz, MATERIALES,
 } from '../core/luces';
 import { generarMapa, resolverChoques, semillaNoche, sortearMaterial, type Mapa } from '../core/mapa';
 import { DRENAJE_APAGADOR, ESTALLIDO_POLILLA, MONSTRUOS, sortearTipo, type TipoMonstruo } from '../core/monstruos';
@@ -173,9 +173,10 @@ export class Partida {
     this.mensajeT = segundos;
   }
 
-  /** ¿Está el punto dentro de alguna luz fija encendida? */
+  /** ¿Está el punto dentro de alguna luz fija que protege (la brasa no cuenta)? */
   enLuzFija(x: number, z: number, margen = 0): Luz | null {
     for (const l of this.luces) {
+      if (!protege(l)) continue;
       const r = radioLuz(l);
       if (r > 0 && Math.hypot(l.x - x, l.z - z) < r + margen) return l;
     }
@@ -233,6 +234,7 @@ export class Partida {
       consumir(l, dt);
       if (antes > 0 && l.combustible <= 0 && !l.madre) this.eventos.apagada?.(l);
       if (l.madre && antes > AVISO_APAGADO && l.combustible <= AVISO_APAGADO) this.avisar('La Hoguera madre se apaga: avívala 🔥');
+      if (l.madre && antes > 0 && l.combustible <= 0) this.avisar('La Hoguera madre es solo brasa: ya no te protege 🔥', 3.5);
     }
   }
 
@@ -391,12 +393,12 @@ export class Partida {
     }
   }
 
-  /** Luz encendida más cercana (sin la madre si `sinMadre`). */
+  /** Luz con fuego vivo más cercana (sin la madre si `sinMadre`). */
   private luzMasCercana(x: number, z: number, sinMadre: boolean): Luz | null {
     let mejor: Luz | null = null;
     let dm = Infinity;
     for (const l of this.luces) {
-      if (!encendida(l) || (sinMadre && l.madre)) continue;
+      if (!protege(l) || (sinMadre && l.madre)) continue;
       const d = Math.hypot(l.x - x, l.z - z);
       if (d < dm) {
         dm = d;
@@ -469,8 +471,9 @@ export class Partida {
         }
         continue;
       }
-      // Ninguno (salvo la Polilla) entra en una luz encendida: se queda en el borde y, si está mejorada, se quema.
+      // Ninguno (salvo la Polilla) entra en una luz encendida: se queda en el borde y, si está mejorada, se quema. En la brasa sí entran.
       for (const l of this.luces) {
+        if (!protege(l)) continue;
         const r = radioLuz(l);
         if (r <= 0) continue;
         const ldx = m.x - l.x;

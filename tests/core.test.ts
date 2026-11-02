@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DIFICULTADES, escalaNoche, MODOS } from '../src/core/difficulty';
 import { PASO } from '../src/core/loop';
 import {
-  alcanza, AVISO_APAGADO, avivar, capacidad, consumir, costeConstruir, costeMejora, DURACION, inventarioVacio, pagar, quema, radioBase, radioLuz, type Luz,
+  alcanza, AVISO_APAGADO, avivar, capacidad, consumir, costeConstruir, costeMejora, DURACION, inventarioVacio, pagar, protege, quema, radioBase, radioLuz, type Luz,
 } from '../src/core/luces';
 import { generarMapa, resolverChoques } from '../src/core/mapa';
 import { MONSTRUOS, sortearTipo, TIPOS_MONSTRUO } from '../src/core/monstruos';
@@ -46,9 +46,12 @@ describe('luces', () => {
     expect(radioLuz(l)).toBe(0);
   });
 
-  it('la Hoguera madre queda en brasa y nunca se apaga del todo', () => {
+  it('la Hoguera madre queda en brasa y nunca se apaga del todo, pero la brasa no protege', () => {
     const m = luz({ madre: true });
     expect(radioLuz(m)).toBeGreaterThan(0);
+    expect(protege(m)).toBe(false);
+    avivar(m, 'ramas');
+    expect(protege(m)).toBe(true);
   });
 
   it('no se pasa de la capacidad y las mejoras ahorran combustible', () => {
@@ -148,6 +151,20 @@ describe('partida', () => {
     }
     // Quieto en la luz, el jugador no recibe daño.
     expect(p.jugador.vida).toBe(p.jugador.vidaMax);
+  });
+
+  it('en la brasa de la madre el jugador no está a salvo', () => {
+    const p = nueva(3);
+    p.luces[0].combustible = 0;
+    simular(p, PASO);
+    expect(p.jugador.enLuz).toBe(false);
+    // Un monstruo pegado al jugador le hace daño dentro de la brasa.
+    p.monstruos.push({
+      id: 999, tipo: 'sombra', x: p.jugador.x + 0.5, z: p.jugador.z, px: 0, pz: 0, vida: 50, vidaMax: 50,
+      velocidad: 1, dano: 10, aturdido: 0, recarga: 0, yaw: 0, muerte: -1, lado: 1,
+    });
+    simular(p, 0.5);
+    expect(p.jugador.vida).toBeLessThan(p.jugador.vidaMax);
   });
 
   it('se llega al amanecer quedándose en la luz', () => {
