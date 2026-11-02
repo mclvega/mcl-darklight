@@ -265,7 +265,7 @@ function pantallaFin(r: Resumen) {
     h('div', { class: 'tarjeta' },
       h('h2', { text: '💀 La oscuridad te alcanzó' }),
       h('p', { class: 'texto-suave', text: `Noche ${r.nivel} · aguantaste ${minutos(r.tiempo)} · ${datos}` }),
-      h('p', { class: 'texto-suave', text: 'Consejo: no te alejes de la luz sin aceite en la linterna y mejora las luces para que quemen a los monstruos.' }),
+      h('p', { class: 'texto-suave', text: 'Consejo: no te alejes de la luz sin fuego en la antorcha y mejora las luces para que quemen a los monstruos.' }),
       boton('Reintentar', empezar, { variante: 'primario', icono: '↻' }),
       boton(`Taller (🔸 ${app.g.brasas})`, () => pantallaTaller(() => pantallaFin(r)), { icono: '🔨' }),
       boton('Menú', menu, { icono: '🏠' }),
@@ -407,7 +407,7 @@ function dibujarHud(p: Partida, dt: number) {
     barra(pt.x - 18, pt.y, 36, 5, m.vida / m.vidaMax, '#c060ff', '#000c');
   }
 
-  // Vida, linterna y destello (arriba a la izquierda).
+  // Vida, antorcha y destello (arriba a la izquierda).
   const bx = 12 + seguro.izq;
   const by = 10 + seguro.arriba;
   const bw = Math.min(tactil ? 220 : 260, ancho * 0.28);
@@ -420,8 +420,8 @@ function dibujarHud(p: Partida, dt: number) {
   barra(bx, by, bw, 18, j.vida / j.vidaMax, j.vida > j.vidaMax * 0.3 ? '#5ad13c' : '#ff5a5a', '#401818');
   ctx.font = 'bold 12px system-ui, sans-serif';
   sombra(`❤️ ${Math.ceil(j.vida)}/${j.vidaMax}${j.enLuz ? '  ·  a salvo en la luz' : ''}`, bx + 6, by + 9);
-  barra(bx, by + 22, bw, 16, j.linterna / j.linternaMax, j.linterna > 0 ? '#a8862a' : '#555', '#2a2410');
-  sombra(j.linterna > 0 ? `🔦 Linterna ${Math.ceil(j.linterna)} s` : '🔦 Sin aceite: vuelve a una luz', bx + 6, by + 30, j.linterna > 0 ? '#fff' : '#ffb070');
+  barra(bx, by + 22, bw, 16, j.antorcha / j.antorchaMax, j.antorcha > 0 ? '#d0702a' : '#555', '#2a1a10');
+  sombra(j.antorcha > 0 ? `🔥 Antorcha ${Math.ceil(j.antorcha)} s` : '🔥 Apagada: enciéndela en una hoguera', bx + 6, by + 30, j.antorcha > 0 ? '#fff' : '#ffb070');
   recarga(bx + 18, by + 70, '✨', j.recargaDestello, p.recargaDestelloMax, tactil ? '' : 'Esp');
 
   // Noche y amanecer (arriba en el centro).
@@ -479,9 +479,9 @@ function dibujarHud(p: Partida, dt: number) {
     sombra(p.mensaje, cx, alto * 0.26, '#ffd23f');
     ctx.globalAlpha = 1;
   }
-  if (!j.enLuz && j.linterna <= 0) {
+  if (!j.enLuz && j.antorcha <= 0) {
     ctx.font = '12px system-ui, sans-serif';
-    sombra('Sin linterna los materiales no se ven: vuelve a una luz para rellenarla', cx, alto * 0.26 + 26, '#ffb070');
+    sombra('Sin antorcha los materiales no se ven: enciéndela en una hoguera', cx, alto * 0.26 + 26, '#ffb070');
   }
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';

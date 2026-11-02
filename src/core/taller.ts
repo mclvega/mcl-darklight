@@ -10,7 +10,8 @@ export interface DefTaller {
 }
 
 export const TALLER: Record<IdTaller, DefTaller> = {
-  linterna: { nombre: 'Linterna', icono: '🔦', max: 5, texto: 'Más radio y más aceite en la linterna.' },
+  // El id sigue siendo «linterna» para no romper los guardados: ahora es la antorcha.
+  linterna: { nombre: 'Antorcha', icono: '🔥', max: 5, texto: 'La antorcha ilumina más lejos y arde más tiempo.' },
   bolsillos: { nombre: 'Bolsillos', icono: '🎒', max: 5, texto: 'Empiezas cada noche con 2 ramas más.' },
   constructor: { nombre: 'Constructor', icono: '🏗️', max: 2, texto: 'Construir soportes cuesta menos.' },
   destello: { nombre: 'Destello', icono: '✨', max: 4, texto: 'El destello se recarga antes y daña más.' },
@@ -29,8 +30,8 @@ export const costeTaller = (n: number) => 10 + n * 10;
 /** Valores de juego derivados del Taller. */
 export function efectosTaller(t: Taller) {
   return {
-    radioLinterna: 2.4 + t.linterna * 0.3,
-    aceiteLinterna: 60 + t.linterna * 15,
+    radioAntorcha: 2.4 + t.linterna * 0.3,
+    duracionAntorcha: 60 + t.linterna * 15,
     ramasIniciales: 3 + t.bolsillos * 2,
     descuento: t.constructor,
     recargaDestello: 6 - t.destello * 0.6,

@@ -167,6 +167,30 @@ describe('partida', () => {
     expect(p.jugador.vida).toBeLessThan(p.jugador.vidaMax);
   });
 
+  it('la antorcha arde siempre y solo se enciende junto a una hoguera con fuego', () => {
+    const p = nueva();
+    const j = p.jugador;
+    const madre = p.luces[0];
+    madre.combustible = 500;
+    expect(j.antorcha).toBe(j.antorchaMax);
+    // Dentro del radio de la madre, pero lejos del fuego: la antorcha se gasta.
+    j.x = 4;
+    j.z = 0;
+    simular(p, 2);
+    expect(j.enLuz).toBe(true);
+    expect(j.antorcha).toBeLessThan(j.antorchaMax);
+    // Junto al fuego se vuelve a encender del todo.
+    j.antorcha = 0;
+    j.x = 1;
+    simular(p, PASO);
+    expect(j.antorcha).toBeCloseTo(j.antorchaMax);
+    // La brasa de la madre no la enciende.
+    madre.combustible = 0;
+    j.antorcha = 0;
+    simular(p, PASO);
+    expect(j.antorcha).toBe(0);
+  });
+
   it('se llega al amanecer quedándose en la luz', () => {
     const p = new Partida({ nivel: 1, semilla: 3, modo: MODOS.muyFacil });
     p.luces[0].combustible = 1000;
@@ -219,7 +243,7 @@ describe('taller', () => {
     const base = efectosTaller(t);
     t.linterna = 2;
     t.bolsillos = 1;
-    expect(efectosTaller(t).radioLinterna).toBeGreaterThan(base.radioLinterna);
+    expect(efectosTaller(t).radioAntorcha).toBeGreaterThan(base.radioAntorcha);
     expect(efectosTaller(t).ramasIniciales).toBe(5);
     expect(costeTaller(1)).toBeGreaterThan(costeTaller(0));
   });

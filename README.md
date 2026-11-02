@@ -6,9 +6,9 @@ Juego de supervivencia nocturna en 3D para el navegador. Cuando cae la noche, lo
 - **Soportes** repartidos por el mapa y la opción de construir otros donde estés (🪵 + 🪨).
 - **Combustibles** con duración distinta: 🪵 ramas 25 s, ⚫ carbón 50 s, 🛢️ aceite 90 s y 💎 cristal lunar 160 s. La luz se encoge y parpadea antes de apagarse.
 - **Mejoras** de cada luz (nivel 1 a 5) con 🪨 piedra, ⚙️ hierro y ✨ polvo de estrella: más radio, menos consumo y, desde el nivel 3, la luz quema a los monstruos.
-- **Linterna**: ilumina poco a tu alrededor, gasta aceite fuera de la luz y se rellena dentro. **✨ Destello**: aturde y daña a los monstruos cercanos.
+- **Antorcha**: ilumina poco a tu alrededor y arde sin parar; solo se vuelve a encender acercándola a una hoguera con fuego (la brasa de la madre no sirve). **✨ Destello**: aturde y daña a los monstruos cercanos.
 - **Monstruos**: la Sombra (rápida), el Acechador (fuerte), el Apagador (desde la noche 2, se come el combustible de las luces) y la Polilla (desde la noche 4, se lanza contra las luces).
-- **🔨 Taller**: mejoras permanentes con las brasas de cada noche (linterna, bolsillos, constructor, destello y Hoguera madre).
+- **🔨 Taller**: mejoras permanentes con las brasas de cada noche (antorcha, bolsillos, constructor, destello y Hoguera madre).
 - **👕 Personaje** con el mismo sistema que el Arcade.
 - Teclado (WASD, E avivar, Q combustible, R mejorar, B construir, Espacio destello), mando y controles táctiles.
 - Funciona sin conexión (PWA) y el progreso queda en el navegador.

@@ -77,9 +77,10 @@ export interface Jugador {
   yaw: number;
   vida: number;
   vidaMax: number;
-  linterna: number;
-  linternaMax: number;
-  radioLinterna: number;
+  /** Segundos de fuego que le quedan a la antorcha (0 = apagada). */
+  antorcha: number;
+  antorchaMax: number;
+  radioAntorcha: number;
   moviendose: boolean;
   recargaDestello: number;
   invulnerable: number;
@@ -91,8 +92,8 @@ export const RADIO_JUGADOR = 0.35;
 /** Distancia para avivar o mejorar una luz. */
 export const ALCANCE_LUZ = 2.2;
 export const RADIO_DESTELLO = 4.5;
-/** Radio de la linterna sin aceite (una brasa). */
-export const RADIO_LINTERNA_APAGADA = 1.1;
+/** Resplandor mínimo con la antorcha apagada (solo para verse los pies). */
+export const RADIO_ANTORCHA_APAGADA = 0.6;
 
 export interface Opciones {
   nivel: number;
@@ -148,7 +149,7 @@ export class Partida {
     for (const s of this.mapa.soportes) this.luces.push({ id: this.siguienteId++, x: s.x, z: s.z, nivel: 1, combustible: 0, madre: false, tipo: 'ramas', extra: 0 });
     this.jugador = {
       x: 0, z: 1.8, px: 0, pz: 1.8, yaw: 0, vida: 100, vidaMax: 100,
-      linterna: this.efectos.aceiteLinterna, linternaMax: this.efectos.aceiteLinterna, radioLinterna: this.efectos.radioLinterna,
+      antorcha: this.efectos.duracionAntorcha, antorchaMax: this.efectos.duracionAntorcha, radioAntorcha: this.efectos.radioAntorcha,
       moviendose: false, recargaDestello: 0, invulnerable: 0, enLuz: true,
     };
     this.inv.ramas = this.efectos.ramasIniciales;
@@ -163,9 +164,9 @@ export class Partida {
     return this.efectos.recargaDestello;
   }
 
-  /** Radio actual de la linterna (pequeño si se queda sin aceite). */
-  get radioLinterna() {
-    return this.jugador.linterna > 0 ? this.jugador.radioLinterna : RADIO_LINTERNA_APAGADA;
+  /** Radio actual de la antorcha (casi nada si está apagada). */
+  get radioAntorcha() {
+    return this.jugador.antorcha > 0 ? this.jugador.radioAntorcha : RADIO_ANTORCHA_APAGADA;
   }
 
   avisar(texto: string, segundos = 2.5) {
@@ -183,7 +184,7 @@ export class Partida {
     return null;
   }
 
-  /** Brillo de 0 a 1 en un punto: luces fijas y linterna (el render usa lo mismo para su mapa de luz). */
+  /** Brillo de 0 a 1 en un punto: luces fijas y antorcha (el render usa lo mismo para su mapa de luz). */
   brillo(x: number, z: number): number {
     let b = 0;
     for (const l of this.luces) {
@@ -192,7 +193,7 @@ export class Partida {
       b = Math.max(b, caida(Math.hypot(l.x - x, l.z - z), r));
     }
     const j = this.jugador;
-    return Math.max(b, caida(Math.hypot(j.x - x, j.z - z), this.radioLinterna) * 0.85);
+    return Math.max(b, caida(Math.hypot(j.x - x, j.z - z), this.radioAntorcha) * 0.85);
   }
 
   actualizar(dt: number, c: Controles) {
@@ -244,21 +245,23 @@ export class Partida {
     j.recargaDestello = Math.max(0, j.recargaDestello - dt);
     const luz = this.enLuzFija(j.x, j.z);
     j.enLuz = !!luz;
-    if (luz) {
-      // Dentro de una luz se recupera la vida y la linterna se rellena.
-      j.vida = Math.min(j.vidaMax, j.vida + 4 * dt);
-      j.linterna = Math.min(j.linternaMax, j.linterna + 20 * dt);
-    } else j.linterna = Math.max(0, j.linterna - dt);
+    // Dentro de una luz se recupera la vida.
+    if (luz) j.vida = Math.min(j.vidaMax, j.vida + 4 * dt);
+    // La antorcha arde siempre y solo se enciende acercándola a una hoguera con fuego vivo.
+    const antes = j.antorcha;
+    j.antorcha = Math.max(0, j.antorcha - dt);
     // Luz al alcance para avivar o mejorar.
     let mejor = ALCANCE_LUZ;
     this.cercana = null;
     for (const l of this.luces) {
       const d = Math.hypot(l.x - j.x, l.z - j.z);
+      if (d < ALCANCE_LUZ && protege(l)) j.antorcha = j.antorchaMax;
       if (d < mejor) {
         mejor = d;
         this.cercana = l;
       }
     }
+    if (antes > 0 && j.antorcha <= 0) this.avisar('Tu antorcha se apagó: enciéndela en una hoguera 🔥', 3);
   }
 
   private recogerMateriales(dt: number) {
@@ -443,8 +446,8 @@ export class Partida {
       const dz = tz - m.z;
       const d = Math.hypot(dx, dz) || 1;
       let v = m.velocidad;
-      // La linterna frena a las Sombras.
-      if (m.tipo === 'sombra' && Math.hypot(m.x - j.x, m.z - j.z) < this.radioLinterna) v *= 0.6;
+      // La antorcha encendida frena a las Sombras.
+      if (m.tipo === 'sombra' && j.antorcha > 0 && Math.hypot(m.x - j.x, m.z - j.z) < this.radioAntorcha) v *= 0.6;
       // Si el jugador está a salvo en la luz, los que lo cazan rondan el borde sin prisa.
       if (!luzObjetivo && jugadorSeguro) v *= 0.5;
       const alcance = def.radio + RADIO_JUGADOR + 0.25;

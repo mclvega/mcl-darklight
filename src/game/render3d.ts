@@ -102,8 +102,8 @@ const G = {
   chispa: new THREE.OctahedronGeometry(0.05, 0),
   anillo: new THREE.RingGeometry(0.92, 1, 40).rotateX(-Math.PI / 2),
   ojo: new THREE.SphereGeometry(0.07, 6, 4),
-  farol: new THREE.SphereGeometry(0.09, 8, 6),
-  marco: new THREE.BoxGeometry(0.16, 0.2, 0.16),
+  palo: new THREE.CylinderGeometry(0.035, 0.045, 0.5, 6).translate(0, 0.1, 0),
+  fuegoAntorcha: new THREE.ConeGeometry(0.1, 0.3, 6).translate(0, 0.15, 0),
 };
 
 const GEO_MATERIAL: Record<IdMaterial, THREE.BufferGeometry> = {
@@ -165,6 +165,7 @@ export class Render3D {
   private destellos: THREE.Mesh[] = [];
   private jugador: THREE.Group | null = null;
   private cuerpoJugador: THREE.Group | null = null;
+  private fuegoAntorcha: THREE.Mesh | null = null;
   private lookActual = '';
   private t = 0;
   private camX = 0;
@@ -437,11 +438,12 @@ export class Render3D {
     this.lookActual = clave;
     const av = createAvatar(look);
     oscurecerTodo(av.group);
-    // Farol en la mano.
-    const farol = new THREE.Group();
-    farol.add(malla(G.marco, lambert(0x3a3a3a)), malla(G.farol, basico(0xffe7a0)));
-    farol.position.set(0.34, 0.5, 0.18);
-    av.body.add(farol);
+    // Antorcha en la mano: palo de madera y llama (se oculta si está apagada).
+    const antorcha = new THREE.Group();
+    this.fuegoAntorcha = malla(G.fuegoAntorcha, basico(0xff9a3c, 0.9, true), 0, 0.35, 0);
+    antorcha.add(malla(G.palo, lambert(0x6b4423)), this.fuegoAntorcha);
+    antorcha.position.set(0.34, 0.5, 0.18);
+    av.body.add(antorcha);
     this.jugador = av.group;
     this.cuerpoJugador = av.body;
     this.escena.add(av.group);
@@ -483,7 +485,9 @@ export class Render3D {
       if (l.combustible < AVISO_APAGADO) intensidad *= l.madre && l.combustible <= 0 ? 0.7 : 0.7 + 0.3 * Math.abs(Math.sin(this.t * 10));
       this.pintarLuz(l.x, l.z, r, l.madre && l.combustible <= 0 ? [1, 0.45, 0.25] : COLOR_LUZ[l.tipo], intensidad);
     }
-    this.pintarLuz(jx, jz, p.radioLinterna, [1, 0.92, 0.75], 0.9);
+    // Antorcha: luz cálida que parpadea un poco.
+    const parpadeo = animaciones ? 1 + Math.sin(this.t * 13) * 0.03 + Math.sin(this.t * 7.3) * 0.02 : 1;
+    this.pintarLuz(jx, jz, p.radioAntorcha * parpadeo, COLOR_LUZ.ramas, p.jugador.antorcha > 0 ? 0.95 : 0.5);
     for (const d of p.destellos) this.pintarLuz(d.x, d.z, RADIO_DESTELLO * (0.4 + d.t * 0.8), [0.9, 0.95, 1], 1.6 * (1 - d.t));
     const a = this.acum;
     const datos = this.datos;
@@ -515,6 +519,10 @@ export class Render3D {
     animateWalk(this.cuerpoJugador!, this.t, j.moviendose && p.fase === 'juego');
     // Parpadeo al recibir un golpe.
     this.jugador!.visible = j.invulnerable <= 0 || Math.floor(this.t * 20) % 2 === 0;
+    // Llama de la antorcha.
+    const fuego = this.fuegoAntorcha!;
+    fuego.visible = j.antorcha > 0;
+    if (fuego.visible && opciones.animaciones) fuego.scale.set(1, 0.85 + Math.abs(Math.sin(this.t * 12)) * 0.3, 1);
 
     // Cámara cenital inclinada que sigue al jugador con suavidad.
     const k = Math.min(1, dt * 6);
