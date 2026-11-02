@@ -117,6 +117,6 @@ export function panelConfiguracion(opciones: { enJuego?: boolean; alReiniciar: (
       ),
     );
   }
-  raiz.append(h('p', { class: 'texto-suave', text: `McL Lumen · versión ${__VERSION__}` }));
+  raiz.append(h('p', { class: 'texto-suave', text: `McL Darklight · versión ${__VERSION__}` }));
   return raiz;
 }

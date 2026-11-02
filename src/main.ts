@@ -100,7 +100,7 @@ function bienvenida() {
   campo.addEventListener('keydown', (e) => e.key === 'Enter' && seguir());
   mostrarPanel(
     h('div', { class: 'tarjeta' },
-      h('h1', { text: '🏮 McL Lumen' }),
+      h('h1', { text: '🏮 McL Darklight' }),
       h('p', { class: 'texto-suave', text: 'Cuando cae la noche, los monstruos salen de la oscuridad. Enciende y aviva luces para que no te alcancen, busca materiales escondidos y aguanta hasta el amanecer.' }),
       campo,
       error,
@@ -116,7 +116,7 @@ function menu() {
   const g = app.g;
   mostrarPanel(
     h('div', { class: 'tarjeta' },
-      h('h1', { text: '🏮 McL Lumen' }),
+      h('h1', { text: '🏮 McL Darklight' }),
       h('p', { class: 'texto-suave', text: `¡Hola, ${app.nombre()}! · Mejor: noche ${g.estadisticas.nocheMax} · 🔸 ${g.brasas} brasas` }),
       boton(`Jugar: noche ${g.nivel}`, empezar, { variante: 'primario', icono: '▶' }),
       boton(`Dificultad: ${MODOS[g.config.dificultad].nombre}`, () => configuracion(), { icono: '🎯' }),

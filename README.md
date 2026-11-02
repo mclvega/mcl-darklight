@@ -1,4 +1,4 @@
-# McL Lumen
+# McL Darklight
 
 Juego de supervivencia nocturna en 3D para el navegador. Cuando cae la noche, los monstruos salen de la oscuridad y solo la luz los detiene. Enciendes y avivas puntos de luz, buscas materiales escondidos en la oscuridad y mejoras tus luces para aguantar hasta el amanecer. Cada noche es más larga, con un mapa más grande y más monstruos, y no hay final.
 
@@ -13,7 +13,7 @@ Juego de supervivencia nocturna en 3D para el navegador. Cuando cae la noche, lo
 - Teclado (WASD, E avivar, Q combustible, R mejorar, B construir, Espacio destello), mando y controles táctiles.
 - Funciona sin conexión (PWA) y el progreso queda en el navegador.
 
-Publicado en https://mcl-lumen.netlify.app
+Publicado en https://mcl-darklight.netlify.app
 
 ## Desarrollo
 

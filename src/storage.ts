@@ -40,7 +40,7 @@ export interface Guardado {
   config: Configuracion;
 }
 
-export const CLAVE_GUARDADO = 'mcl-lumen:v1';
+export const CLAVE_GUARDADO = 'mcl-darklight:v1';
 const MAX_RECORDS = 10;
 
 export const lookPorDefecto = (): Look => ({ ...DEFAULT_LOOK, shirt: 0x5d4037, hat: 'beanie', hatColor: 0x37474f, bottomColor: 0x37474f, accessory: 'scarf' });
