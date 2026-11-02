@@ -31,7 +31,7 @@ export const costeTaller = (n: number) => 10 + n * 10;
 export function efectosTaller(t: Taller) {
   return {
     radioAntorcha: 2.4 + t.linterna * 0.3,
-    duracionAntorcha: 60 + t.linterna * 15,
+    duracionAntorcha: 25 + t.linterna * 5,
     ramasIniciales: 3 + t.bolsillos * 2,
     descuento: t.constructor,
     recargaDestello: 6 - t.destello * 0.6,

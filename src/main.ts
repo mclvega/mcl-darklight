@@ -5,7 +5,7 @@ import { audio } from './audio';
 import { MODOS } from './core/difficulty';
 import { Entrada } from './core/input';
 import {
-  AVISO_APAGADO, capacidad, COMBUSTIBLES, CONSTRUCCION, costeMejora, DURACION, MATERIALES, NIVEL_MAX_LUZ, textoCoste, type IdMaterial,
+  AVISO_APAGADO, capacidad, colorMadre, COMBUSTIBLES, CONSTRUCCION, costeMejora, DURACION, MATERIALES, NIVEL_MAX_LUZ, protege, textoCoste, type IdMaterial,
 } from './core/luces';
 import { iniciarBucle } from './core/loop';
 import { iniciarPantallaCompleta } from './fullscreen';
@@ -149,6 +149,7 @@ function records() {
       h('h2', { text: '🏆 Récords' }),
       dato('Noche más alta', e.nocheMax),
       dato('Noches superadas', e.noches),
+      dato('Salvados', e.salvados),
       dato('Monstruos abatidos', e.abatidos),
       dato('Materiales recogidos', e.recogidos),
       dato('Brasas ganadas', e.brasasTotal),
@@ -195,6 +196,15 @@ async function empezar() {
       apagada: () => audio.efecto('muerte', 0.4),
       estallido: () => audio.efecto('explosion', 0.5),
       fallo: () => audio.efecto('boton', 0.4),
+      rescate: () => {
+        audio.efecto('recoger');
+        vibrar(30);
+      },
+      salvado: () => audio.efecto('nivel'),
+      perdida: () => {
+        audio.efecto('muerte', 0.8);
+        vibrar(80);
+      },
       fin: (r) => {
         audio.efecto(r.amanecer ? 'nivel' : 'muerte');
         recordFinal = anotarNoche(app.g, r, app.nombre());
@@ -247,13 +257,13 @@ const minutos = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(
 
 function pantallaFin(r: Resumen) {
   jugando(false);
-  const datos = `👹 ${r.abatidos} abatidos · 🎒 ${r.recogidos} materiales · 🔸 +${r.brasas} brasas`;
+  const datos = `🧍 ${r.salvados}/${r.objetivo} salvados · 👹 ${r.abatidos} abatidos · 🎒 ${r.recogidos} materiales`;
   if (r.amanecer) {
     mostrarPanel(
       h('div', { class: 'tarjeta' },
         h('h2', { text: `🌅 ¡Amanece! Noche ${r.nivel} superada` }),
-        h('p', { class: 'texto-suave', text: datos }),
-        h('p', { class: 'texto-suave', text: recordFinal ? '🏆 ¡Nuevo récord!' : `La noche ${r.nivel + 1} será más larga y con más monstruos.` }),
+        h('p', { class: 'texto-suave', text: `${datos} · 🔸 +${r.brasas} brasas` }),
+        h('p', { class: 'texto-suave', text: recordFinal ? '🏆 ¡Nuevo récord!' : `La noche ${r.nivel + 1} será más larga, con más monstruos y más gente que salvar.` }),
         boton(`Noche ${app.g.nivel}`, empezar, { variante: 'primario', icono: '🌙' }),
         boton(`Taller (🔸 ${app.g.brasas})`, () => pantallaTaller(() => pantallaFin(r)), { icono: '🔨' }),
         boton('Menú', menu, { icono: '🏠' }),
@@ -261,13 +271,19 @@ function pantallaFin(r: Resumen) {
     );
     return;
   }
+  const caida = r.motivo === 'caida';
   mostrarPanel(
     h('div', { class: 'tarjeta' },
-      h('h2', { text: '💀 La oscuridad te alcanzó' }),
+      h('h2', { text: caida ? '💀 La oscuridad te alcanzó' : '💔 No salvaste a suficientes' }),
       h('p', { class: 'texto-suave', text: `Noche ${r.nivel} · aguantaste ${minutos(r.tiempo)} · ${datos}` }),
-      h('p', { class: 'texto-suave', text: 'Consejo: no te alejes de la luz sin fuego en la antorcha y mejora las luces para que quemen a los monstruos.' }),
-      boton('Reintentar', empezar, { variante: 'primario', icono: '↻' }),
-      boton(`Taller (🔸 ${app.g.brasas})`, () => pantallaTaller(() => pantallaFin(r)), { icono: '🔨' }),
+      h('p', { text: `Llegaste a la noche ${r.nivel}. Todo empieza de nuevo: noche 1, sin brasas ni mejoras.` }),
+      h('p', {
+        class: 'texto-suave',
+        text: caida
+          ? 'Consejo: no te alejes sin fuego en la antorcha y mejora las luces para que quemen a los monstruos.'
+          : 'Consejo: sigue la flecha 🆘, lleva a cada uno a la hoguera de su color y no dejes que su fuego quede en brasa.',
+      }),
+      boton('Empezar de nuevo (noche 1)', empezar, { variante: 'primario', icono: '↻' }),
       boton('Menú', menu, { icono: '🏠' }),
     ),
   );
@@ -383,7 +399,7 @@ function dibujarHud(p: Partida, dt: number) {
     if (!pt.visible) {
       if (app.g.config.avisoLuz && (apagandose || (l.madre && d > 12))) {
         const q = r.proyectar(l.x, 0, l.z, ancho, alto);
-        flechaBorde(q.x, q.y, apagandose ? '#ff9a3c' : '#ffe7a0', l.madre ? '🔥' : '⏳');
+        flechaBorde(q.x, q.y, apagandose ? '#ff9a3c' : l.madre && p.madres.length > 1 ? colorMadre(l.indice).css : '#ffe7a0', l.madre ? '🔥' : '⏳');
       }
       continue;
     }
@@ -405,6 +421,46 @@ function dibujarHud(p: Partida, dt: number) {
     const pt = r.proyectar(m.x, 2, m.z, ancho, alto);
     if (!pt.visible) continue;
     barra(pt.x - 18, pt.y, 36, 5, m.vida / m.vidaMax, '#c060ff', '#000c');
+  }
+
+  // Personas y animalitos: «🆘» sobre los perdidos cercanos (del color de su madre) y vida de los heridos.
+  ctx.textAlign = 'center';
+  for (const per of p.personas) {
+    if (per.estado === 'muerta') continue;
+    const color = colorMadre(per.madre).css;
+    if (per.estado === 'perdida') {
+      if (Math.hypot(per.x - j.x, per.z - j.z) > 14) continue;
+      const pt = r.proyectar(per.x, 1.7, per.z, ancho, alto);
+      if (!pt.visible) continue;
+      ctx.font = 'bold 18px system-ui, sans-serif';
+      sombra('🆘', pt.x, pt.y - 4 + Math.sin(performance.now() / 200) * 3, color);
+      continue;
+    }
+    if (per.vida >= per.vidaMax) continue;
+    const pt = r.proyectar(per.x, 1.8, per.z, ancho, alto);
+    if (!pt.visible) continue;
+    barra(pt.x - 16, pt.y, 32, 5, per.vida / per.vidaMax, color, '#000c');
+  }
+  // Flecha de rescate: hacia la madre del primero de la fila o, si no llevas a nadie, al perdido más cercano.
+  const guia = p.siguiendo[0];
+  let destino: { x: number; z: number; color: string; icono: string } | null = null;
+  if (guia) {
+    const m = p.madres[guia.madre];
+    destino = { x: m.x, z: m.z, color: colorMadre(guia.madre).css, icono: '🔥' };
+  } else {
+    let dm = Infinity;
+    for (const per of p.personas) {
+      if (per.estado !== 'perdida') continue;
+      const d = Math.hypot(per.x - j.x, per.z - j.z);
+      if (d < dm) {
+        dm = d;
+        destino = { x: per.x, z: per.z, color: colorMadre(per.madre).css, icono: '🆘' };
+      }
+    }
+  }
+  if (destino) {
+    const q = r.proyectar(destino.x, 0, destino.z, ancho, alto);
+    if (!q.visible) flechaBorde(q.x, q.y, destino.color, destino.icono);
   }
 
   // Vida, antorcha y destello (arriba a la izquierda).
@@ -430,6 +486,26 @@ function dibujarHud(p: Partida, dt: number) {
   ctx.font = 'bold 15px system-ui, sans-serif';
   sombra(`🌙 Noche ${p.nivel} · amanece en ${minutos(Math.max(0, Math.ceil(p.duracion - p.tiempo)))}`, cx, 18 + seguro.arriba);
   barra(cx - nw / 2, 30 + seguro.arriba, nw, 8, p.progreso, '#ffb36b', '#1a1a2a');
+  // Salvados y, con varias madres, el estado de cada una.
+  ctx.font = 'bold 14px system-ui, sans-serif';
+  const listos = p.salvados >= p.objetivo;
+  const llevas = p.siguiendo.length ? `  ·  te siguen ${p.siguiendo.length}` : '';
+  sombra(`🧍 Salvados ${p.salvados}/${p.objetivo}${llevas}`, cx, 52 + seguro.arriba, listos ? '#7dff6a' : '#fff');
+  if (p.madres.length > 1) {
+    const paso = 22;
+    const x0 = cx - ((p.madres.length - 1) * paso) / 2;
+    p.madres.forEach((m, i) => {
+      const x = x0 + i * paso;
+      ctx.fillStyle = colorMadre(i).css;
+      ctx.globalAlpha = protege(m) ? 1 : 0.35;
+      ctx.beginPath();
+      ctx.arc(x, 72 + seguro.arriba, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.font = '10px system-ui, sans-serif';
+      sombra(protege(m) ? '🔥' : '🔸', x, 72 + seguro.arriba);
+    });
+  }
 
   // Mochila (arriba a la derecha, junto a la pausa): combustibles y materiales de mejora.
   ctx.font = 'bold 13px system-ui, sans-serif';

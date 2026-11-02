@@ -19,9 +19,11 @@ export interface Estadisticas {
   recogidos: number;
   caidas: number;
   brasasTotal: number;
+  /** Personas y animalitos puestos a salvo. */
+  salvados: number;
 }
 
-const estadisticasNuevas = (): Estadisticas => ({ noches: 0, nocheMax: 0, abatidos: 0, recogidos: 0, caidas: 0, brasasTotal: 0 });
+const estadisticasNuevas = (): Estadisticas => ({ noches: 0, nocheMax: 0, abatidos: 0, recogidos: 0, caidas: 0, brasasTotal: 0, salvados: 0 });
 
 export interface Guardado {
   v: 1;
@@ -110,17 +112,25 @@ export function normalizarGuardado(entrada: unknown): Guardado {
 }
 
 /**
- * Anota el final de una noche. Al llegar al amanecer se pasa a la siguiente; si no, se repite.
+ * Anota el final de una noche. Al llegar al amanecer se pasa a la siguiente; al perder, todo empieza de nuevo
+ * (noche 1, mapa nuevo, sin brasas ni Taller), pero se conservan los récords y las estadísticas.
  * Devuelve true si la noche entra en la tabla de récords.
  */
-export function anotarNoche(g: Guardado, r: { nivel: number; amanecer: boolean; abatidos: number; recogidos: number; brasas: number }, nombre: string): boolean {
+export function anotarNoche(
+  g: Guardado, r: { nivel: number; amanecer: boolean; abatidos: number; recogidos: number; brasas: number; salvados?: number }, nombre: string, ahora = Date.now(),
+): boolean {
   const e = g.estadisticas;
   e.abatidos += r.abatidos;
   e.recogidos += r.recogidos;
+  e.salvados += r.salvados ?? 0;
   e.brasasTotal += r.brasas;
   g.brasas += r.brasas;
   if (!r.amanecer) {
     e.caidas++;
+    g.nivel = 1;
+    g.semilla = guardadoNuevo(ahora).semilla;
+    g.brasas = 0;
+    g.taller = tallerVacio();
     return false;
   }
   e.noches++;

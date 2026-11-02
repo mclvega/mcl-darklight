@@ -1,9 +1,9 @@
-import { escalaNoche, type Modo } from '../core/difficulty';
+import { escalaNoche, madresNoche, type Modo } from '../core/difficulty';
 import {
-  avivar, AVISO_APAGADO, COMBUSTIBLES, consumir, costeConstruir, costeMejora, inventarioVacio, MATERIALES_ORDEN, NIVEL_MAX_LUZ,
+  avivar, AVISO_APAGADO, COMBUSTIBLES, consumir, costeConstruir, costeMejora, inventarioVacio, MATERIALES_ORDEN, NIVEL_MAX_LUZ, nombreMadre,
   pagar, protege, quema, radioLuz, textoCoste, type IdCombustible, type IdMaterial, type Inventario, type Luz, MATERIALES,
 } from '../core/luces';
-import { generarMapa, resolverChoques, semillaNoche, sortearMaterial, type Mapa } from '../core/mapa';
+import { generarMapa, obstaculosCerca, resolverChoques, semillaNoche, sortearMaterial, type Especie, type Mapa } from '../core/mapa';
 import { DRENAJE_APAGADOR, ESTALLIDO_POLILLA, MONSTRUOS, sortearTipo, type TipoMonstruo } from '../core/monstruos';
 import { crearRng, type Rng } from '../core/rng';
 import { efectosTaller, tallerVacio, type Taller } from '../core/taller';
@@ -32,7 +32,44 @@ export interface Resumen {
   abatidos: number;
   recogidos: number;
   brasas: number;
+  /** Personas y animalitos a salvo al terminar. */
+  salvados: number;
+  objetivo: number;
+  /** Por qué terminó: amanecer, el jugador cayó o no se salvó a suficientes. */
+  motivo: 'amanecer' | 'caida' | 'rescate';
 }
+
+/** Una persona o un animalito perdido en la oscuridad. */
+export interface Persona {
+  id: number;
+  especie: Especie;
+  /** Índice de la Hoguera madre a la que debe llegar. */
+  madre: number;
+  x: number;
+  z: number;
+  px: number;
+  pz: number;
+  yaw: number;
+  estado: 'perdida' | 'sigue' | 'salvada' | 'muerta';
+  vida: number;
+  vidaMax: number;
+  /** Dentro de una luz con fuego vivo (los monstruos no la alcanzan). */
+  protegida: boolean;
+  moviendose: boolean;
+  invulnerable: number;
+  /** Puesto alrededor del fuego de su madre. */
+  puesto: number;
+  /** Segundos desde que murió (se desvanece). */
+  muerte: number;
+}
+
+export const VIDA_PERSONA = 30;
+/** Distancia para rescatar a alguien. */
+export const ALCANCE_RESCATE = 1.3;
+/** Vida por segundo que pierden los salvados si su madre queda en brasa. */
+export const FRIO = 3;
+/** Cuánto más rápido gasta una madre por cada salvado que calienta. */
+export const GASTO_POR_SALVADO = 0.1;
 
 export interface Eventos {
   recoger?: (tipo: IdMaterial) => void;
@@ -44,6 +81,9 @@ export interface Eventos {
   abatido?: (tipo: TipoMonstruo) => void;
   apagada?: (l: Luz) => void;
   estallido?: (l: Luz) => void;
+  rescate?: (p: Persona) => void;
+  salvado?: (p: Persona) => void;
+  perdida?: (p: Persona) => void;
   fallo?: (texto: string) => void;
   fin?: (r: Resumen) => void;
 }
@@ -109,6 +149,11 @@ export class Partida {
   readonly mapa: Mapa;
   readonly duracion: number;
   readonly luces: Luz[] = [];
+  /** Hogueras madre, por índice (también están en `luces`). */
+  readonly madres: Luz[] = [];
+  readonly personas: Persona[] = [];
+  /** Salvados vivos que hacen falta al amanecer. */
+  readonly objetivo: number;
   monstruos: Monstruo[] = [];
   readonly jugador: Jugador;
   readonly inv: Inventario = inventarioVacio();
@@ -133,6 +178,10 @@ export class Partida {
   private relojAparicion = 0;
   private relojMaterial = 0;
   private readonly materialesIniciales: number;
+  /** Fila de rescatados que siguen al jugador, en orden. */
+  private fila: Persona[] = [];
+  /** Madres cuyo aviso de frío ya se dio (se olvida al reavivarlas). */
+  private avisoFrio = new Set<number>();
 
   constructor(o: Opciones) {
     this.nivel = o.nivel;
@@ -143,17 +192,48 @@ export class Partida {
     this.duracion = Math.round(this.escala.duracion * o.modo.noche);
     const semilla = semillaNoche(o.semilla, o.nivel);
     this.rng = crearRng(semilla ^ 0x5bd1e995);
-    this.mapa = generarMapa(semilla, o.nivel, o.modo.materiales);
+    this.mapa = generarMapa(semilla, o.nivel, o.modo.materiales, madresNoche(o.nivel, o.modo.desde));
     this.materialesIniciales = this.mapa.materiales.length;
-    this.luces.push({ id: this.siguienteId++, x: 0, z: 0, nivel: 1, combustible: 45 * o.modo.combustible, madre: true, tipo: 'ramas', extra: this.efectos.radioMadre });
-    for (const s of this.mapa.soportes) this.luces.push({ id: this.siguienteId++, x: s.x, z: s.z, nivel: 1, combustible: 0, madre: false, tipo: 'ramas', extra: 0 });
+    this.objetivo = this.escala.objetivo;
+    // Solo la madre del campamento empieza encendida; las demás esperan en brasa.
+    this.mapa.madres.forEach((m, i) => {
+      const l: Luz = { id: this.siguienteId++, x: m.x, z: m.z, nivel: 1, combustible: i === 0 ? 45 * o.modo.combustible : 0, madre: true, indice: i, tipo: 'ramas', extra: this.efectos.radioMadre };
+      this.madres.push(l);
+      this.luces.push(l);
+    });
+    for (const s of this.mapa.soportes) this.luces.push({ id: this.siguienteId++, x: s.x, z: s.z, nivel: 1, combustible: 0, madre: false, indice: -1, tipo: 'ramas', extra: 0 });
+    for (const p of this.mapa.perdidos) {
+      this.personas.push({
+        id: this.siguienteId++, especie: p.especie, madre: p.madre, x: p.x, z: p.z, px: p.x, pz: p.z, yaw: 0, estado: 'perdida',
+        vida: VIDA_PERSONA, vidaMax: VIDA_PERSONA, protegida: false, moviendose: false, invulnerable: 0, puesto: 0, muerte: 0,
+      });
+    }
     this.jugador = {
       x: 0, z: 1.8, px: 0, pz: 1.8, yaw: 0, vida: 100, vidaMax: 100,
       antorcha: this.efectos.duracionAntorcha, antorchaMax: this.efectos.duracionAntorcha, radioAntorcha: this.efectos.radioAntorcha,
       moviendose: false, recargaDestello: 0, invulnerable: 0, enLuz: true,
     };
     this.inv.ramas = this.efectos.ramasIniciales;
-    this.avisar(`Noche ${o.nivel}: aguanta hasta el amanecer`);
+    this.avisar(`Noche ${o.nivel}: salva a ${this.objetivo} y aguanta hasta el amanecer`, 4);
+  }
+
+  /** Personas y animalitos a salvo junto a su madre. */
+  get salvados() {
+    return this.personas.filter((p) => p.estado === 'salvada').length;
+  }
+
+  /** Los que aún pueden acabar a salvo (todos menos los muertos). */
+  get posibles() {
+    return this.personas.filter((p) => p.estado !== 'muerta').length;
+  }
+
+  /** Rescatados que siguen al jugador ahora mismo. */
+  get siguiendo(): readonly Persona[] {
+    return this.fila;
+  }
+
+  nombreMadre(i: number) {
+    return nombreMadre(i, this.madres.length);
   }
 
   get progreso() {
@@ -208,11 +288,14 @@ export class Partida {
     this.actualizarJugador(dt);
     this.recogerMateriales(dt);
     this.acciones(c);
+    this.actualizarPersonas(dt);
     this.aparecerMonstruos(dt);
     this.moverMonstruos(dt);
 
-    if (this.jugador.vida <= 0) return this.terminar(false);
-    if (this.tiempo >= this.duracion) this.terminar(true);
+    if (this.jugador.vida <= 0) return this.terminar('caida');
+    // Si ya no quedan suficientes por salvar, la noche está perdida.
+    if (this.posibles < this.objetivo) return this.terminar('rescate');
+    if (this.tiempo >= this.duracion) this.terminar(this.salvados >= this.objetivo ? 'amanecer' : 'rescate');
   }
 
   private moverJugador(dt: number, c: Controles) {
@@ -230,13 +313,95 @@ export class Partida {
   }
 
   private actualizarLuces(dt: number) {
+    // Cada madre gasta más cuanta más gente calienta.
+    const calientan = new Array<number>(this.madres.length).fill(0);
+    for (const p of this.personas) if (p.estado === 'salvada') calientan[p.madre]++;
     for (const l of this.luces) {
       const antes = l.combustible;
-      consumir(l, dt);
+      consumir(l, dt, l.madre ? 1 + calientan[l.indice] * GASTO_POR_SALVADO : 1);
       if (antes > 0 && l.combustible <= 0 && !l.madre) this.eventos.apagada?.(l);
-      if (l.madre && antes > AVISO_APAGADO && l.combustible <= AVISO_APAGADO) this.avisar('La Hoguera madre se apaga: avívala 🔥');
-      if (l.madre && antes > 0 && l.combustible <= 0) this.avisar('La Hoguera madre es solo brasa: ya no te protege 🔥', 3.5);
+      if (!l.madre) continue;
+      const nombre = this.nombreMadre(l.indice);
+      if (antes > AVISO_APAGADO && l.combustible <= AVISO_APAGADO) this.avisar(`La ${nombre} se apaga: avívala 🔥`);
+      if (antes > 0 && l.combustible <= 0) this.avisar(`La ${nombre} es solo brasa: ya no protege 🔥`, 3.5);
+      if (l.combustible > 0) this.avisoFrio.delete(l.indice);
     }
+  }
+
+  private actualizarPersonas(dt: number) {
+    const j = this.jugador;
+    for (const p of this.personas) {
+      p.px = p.x;
+      p.pz = p.z;
+      p.moviendose = false;
+      p.invulnerable = Math.max(0, p.invulnerable - dt);
+      if (p.estado === 'muerta') {
+        p.muerte += dt;
+        continue;
+      }
+      if (p.estado === 'perdida') {
+        if (Math.hypot(p.x - j.x, p.z - j.z) < ALCANCE_RESCATE) {
+          p.estado = 'sigue';
+          this.fila.push(p);
+          this.avisar(`¡${p.especie === 'persona' ? 'Rescataste a alguien' : `Rescataste a un ${p.especie}`}! Llévalo a la ${this.nombreMadre(p.madre)} 🔥`, 3);
+          this.eventos.rescate?.(p);
+        }
+        continue;
+      }
+      const madre = this.madres[p.madre];
+      if (p.estado === 'sigue') {
+        // En fila: cada uno sigue al anterior (el primero, al jugador).
+        const i = this.fila.indexOf(p);
+        const guia = i > 0 ? this.fila[i - 1] : j;
+        this.caminar(p, guia.x, guia.z, 1, VELOCIDAD_JUGADOR * 1.1, dt);
+        if (protege(madre) && Math.hypot(p.x - madre.x, p.z - madre.z) < radioLuz(madre)) {
+          p.estado = 'salvada';
+          p.puesto = this.personas.filter((o) => o.estado === 'salvada' && o.madre === p.madre).length - 1;
+          this.fila.splice(i, 1);
+          this.avisar(`¡A salvo junto a la ${this.nombreMadre(p.madre)}! 🔥`);
+          this.eventos.salvado?.(p);
+        }
+      } else {
+        // Salvada: se sienta en su puesto alrededor del fuego.
+        const a = p.puesto * 0.9 + p.madre;
+        const r = 2.2 + Math.floor(p.puesto / 7) * 0.7;
+        this.caminar(p, madre.x + Math.cos(a) * r, madre.z + Math.sin(a) * r, 0.05, VELOCIDAD_JUGADOR * 0.6, dt);
+        if (protege(madre)) p.vida = Math.min(p.vidaMax, p.vida + 2 * dt);
+        else {
+          p.vida -= FRIO * dt;
+          if (!this.avisoFrio.has(p.madre)) {
+            this.avisoFrio.add(p.madre);
+            this.avisar(`¡Los salvados de la ${this.nombreMadre(p.madre)} se congelan! Avívala 🔥`, 3.5);
+          }
+        }
+      }
+      p.protegida = !!this.enLuzFija(p.x, p.z);
+      if (p.vida <= 0) this.perder(p);
+    }
+  }
+
+  /** Mueve a una persona hacia un punto hasta quedar a `distancia` de él. */
+  private caminar(p: Persona, x: number, z: number, distancia: number, velocidad: number, dt: number) {
+    const dx = x - p.x;
+    const dz = z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d <= distancia) return;
+    const paso = Math.min(d - distancia, velocidad * dt);
+    p.x += (dx / d) * paso;
+    p.z += (dz / d) * paso;
+    p.yaw = Math.atan2(dx, dz);
+    p.moviendose = paso > 0.01 * dt * velocidad;
+    resolverChoques(p, 0.3, this.mapa);
+  }
+
+  private perder(p: Persona) {
+    p.estado = 'muerta';
+    p.vida = 0;
+    p.muerte = 0;
+    const i = this.fila.indexOf(p);
+    if (i >= 0) this.fila.splice(i, 1);
+    this.avisar(p.especie === 'persona' ? 'La oscuridad se llevó a alguien 💔' : `La oscuridad se llevó a un ${p.especie} 💔`, 3);
+    this.eventos.perdida?.(p);
   }
 
   private actualizarJugador(dt: number) {
@@ -327,7 +492,7 @@ export class Partida {
       if (pegada) this.fallo('Demasiado cerca de otra luz');
       else if (!pagar(this.inv, coste)) this.fallo(`Para construir un soporte necesitas ${textoCoste(coste)}`);
       else {
-        const nueva: Luz = { id: this.siguienteId++, x: j.x, z: j.z, nivel: 1, combustible: 0, madre: false, tipo: 'ramas', extra: 0 };
+        const nueva: Luz = { id: this.siguienteId++, x: j.x, z: j.z, nivel: 1, combustible: 0, madre: false, indice: -1, tipo: 'ramas', extra: 0 };
         // Si llevas combustible, el soporte nuevo se enciende al momento.
         const tipo = this.combustibleParaAvivar();
         if (tipo && avivar(nueva, tipo, this.modo.combustible)) this.inv[tipo]--;
@@ -383,7 +548,7 @@ export class Partida {
       const z = j.z + Math.sin(a) * d;
       const m = this.mapa.medio - 1;
       if (Math.abs(x) > m || Math.abs(z) > m) continue;
-      if (this.enLuzFija(x, z, 1.5) || this.mapa.obstaculos.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.8)) continue;
+      if (this.enLuzFija(x, z, 1.5) || obstaculosCerca(this.mapa, x, z).some((o) => Math.hypot(o.x - x, o.z - z) < o.r + 0.8)) continue;
       const tipo = sortearTipo(this.nivel, this.rng.siguiente());
       const def = MONSTRUOS[tipo];
       const vida = def.vida * this.escala.vida * this.modo.vida;
@@ -431,11 +596,26 @@ export class Partida {
         m.aturdido -= dt;
         continue;
       }
-      // Objetivo: el jugador, o una luz para los Apagadores y las Polillas.
+      // Objetivo: lo más cercano que esté desprotegido (el jugador o un rescatado), o una luz para los Apagadores y las Polillas.
       let tx = j.x;
       let tz = j.z;
+      let presa: Persona | null = null;
       let luzObjetivo: Luz | null = null;
+      let dPresa = jugadorSeguro ? Infinity : Math.hypot(j.x - m.x, j.z - m.z);
+      for (const p of this.personas) {
+        if ((p.estado !== 'sigue' && p.estado !== 'salvada') || p.protegida) continue;
+        const dp = Math.hypot(p.x - m.x, p.z - m.z);
+        if (dp < dPresa) {
+          dPresa = dp;
+          presa = p;
+          tx = p.x;
+          tz = p.z;
+        }
+      }
       if (m.tipo === 'apagador' || m.tipo === 'polilla') {
+        presa = null;
+        tx = j.x;
+        tz = j.z;
         luzObjetivo = this.luzMasCercana(m.x, m.z, m.tipo === 'apagador');
         if (luzObjetivo) {
           tx = luzObjetivo.x;
@@ -448,8 +628,8 @@ export class Partida {
       let v = m.velocidad;
       // La antorcha encendida frena a las Sombras.
       if (m.tipo === 'sombra' && j.antorcha > 0 && Math.hypot(m.x - j.x, m.z - j.z) < this.radioAntorcha) v *= 0.6;
-      // Si el jugador está a salvo en la luz, los que lo cazan rondan el borde sin prisa.
-      if (!luzObjetivo && jugadorSeguro) v *= 0.5;
+      // Si el jugador está a salvo en la luz y no hay nadie más a su alcance, rondan el borde sin prisa.
+      if (!luzObjetivo && !presa && jugadorSeguro) v *= 0.5;
       const alcance = def.radio + RADIO_JUGADOR + 0.25;
       if (luzObjetivo || d > alcance * 0.8) {
         m.x += (dx / d) * v * dt;
@@ -491,6 +671,16 @@ export class Partida {
         }
         m.vida -= quema(l.nivel) * dt;
         if (m.tipo === 'apagador' && l === luzObjetivo) l.combustible = Math.max(0, l.combustible - DRENAJE_APAGADOR * dt);
+      }
+      // Ataque a un rescatado desprotegido.
+      if (presa && !presa.protegida && Math.hypot(presa.x - m.x, presa.z - m.z) < alcance && m.recarga <= 0) {
+        m.recarga = 1;
+        if (presa.invulnerable <= 0) {
+          presa.vida -= m.dano * 0.5;
+          presa.invulnerable = 0.35;
+          if (presa.vida <= 0) this.perder(presa);
+        }
+        continue;
       }
       // Ataque al jugador si está fuera de la luz.
       const dj = Math.hypot(j.x - m.x, j.z - m.z);
@@ -536,18 +726,20 @@ export class Partida {
     }
   }
 
-  /** Brasas para el Taller: por noche superada, monstruos y lo que sobra en la mochila. */
+  /** Brasas para el Taller al amanecer: noche superada, salvados, monstruos y lo que sobra en la mochila. Al perder, nada. */
   brasas(amanecer: boolean): number {
+    if (!amanecer) return 0;
     const sobra = MATERIALES_ORDEN.reduce((s, k) => s + this.inv[k], 0);
-    const total = this.nivel * 3 + this.abatidos + Math.floor(sobra / 2);
-    return amanecer ? total : Math.floor(total / 2);
+    return this.nivel * 3 + this.salvados * 5 + this.abatidos + Math.floor(sobra / 2);
   }
 
-  private terminar(amanecer: boolean) {
+  private terminar(motivo: Resumen['motivo']) {
+    const amanecer = motivo === 'amanecer';
     this.fase = amanecer ? 'amanecer' : 'fin';
     for (const m of this.monstruos) if (m.muerte < 0) m.muerte = 0;
     this.resumen = {
       nivel: this.nivel, amanecer, tiempo: Math.floor(this.tiempo), abatidos: this.abatidos, recogidos: this.recogidos, brasas: this.brasas(amanecer),
+      salvados: this.salvados, objetivo: this.objetivo, motivo,
     };
     this.eventos.fin?.(this.resumen);
   }

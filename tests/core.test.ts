@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DIFICULTADES, escalaNoche, MODOS } from '../src/core/difficulty';
+import { DIFICULTADES, escalaNoche, madresNoche, MODOS } from '../src/core/difficulty';
 import { PASO } from '../src/core/loop';
 import {
   alcanza, AVISO_APAGADO, avivar, capacidad, consumir, costeConstruir, costeMejora, DURACION, inventarioVacio, pagar, protege, quema, radioBase, radioLuz, type Luz,
 } from '../src/core/luces';
-import { generarMapa, resolverChoques } from '../src/core/mapa';
+import { ANIMALES, DISTANCIA_PERDIDO, generarMapa, resolverChoques } from '../src/core/mapa';
 import { MONSTRUOS, sortearTipo, TIPOS_MONSTRUO } from '../src/core/monstruos';
 import { costeTaller, efectosTaller, tallerVacio } from '../src/core/taller';
 import { controlesVacios, Partida, type Controles } from '../src/game/logica';
@@ -13,7 +13,7 @@ import { anotarNoche, guardadoNuevo, limpiarNombre, normalizarGuardado } from '.
 
 const normal = MODOS.normal;
 const nueva = (nivel = 1, semilla = 7) => new Partida({ nivel, semilla, modo: normal });
-const luz = (o: Partial<Luz> = {}): Luz => ({ id: 1, x: 0, z: 0, nivel: 1, combustible: 0, madre: false, tipo: 'ramas', extra: 0, ...o });
+const luz = (o: Partial<Luz> = {}): Luz => ({ id: 1, x: 0, z: 0, nivel: 1, combustible: 0, madre: false, indice: -1, tipo: 'ramas', extra: 0, ...o });
 
 function simular(p: Partida, segundos: number, c: Partial<Controles> = {}) {
   for (let t = 0; t < segundos && p.fase === 'juego'; t += PASO) p.actualizar(PASO, { ...controlesVacios(), ...c });
@@ -26,7 +26,21 @@ describe('dificultad', () => {
     expect(MODOS.muyFacil.dano).toBeLessThan(MODOS.desafio.dano);
     expect(escalaNoche(10).duracion).toBeGreaterThan(escalaNoche(1).duracion);
     expect(escalaNoche(50).maximo).toBeGreaterThan(escalaNoche(1).maximo);
-    expect(escalaNoche(1000).duracion).toBe(300);
+  });
+
+  it('nada tiene tope: la noche 1000 supera a la 100 en todo', () => {
+    const a = escalaNoche(100);
+    const b = escalaNoche(1000);
+    for (const k of ['duracion', 'minimo', 'maximo', 'velocidad', 'lado', 'objetivo', 'perdidos'] as const) expect(b[k]).toBeGreaterThan(a[k]);
+    expect(escalaNoche(1).lado).toBeGreaterThanOrEqual(100);
+    expect(escalaNoche(1).objetivo).toBe(1);
+  });
+
+  it('más Hogueras madre con las noches y antes en Desafío', () => {
+    expect(madresNoche(1, MODOS.normal.desde)).toBe(1);
+    expect(madresNoche(9, MODOS.normal.desde)).toBe(2);
+    expect(madresNoche(9, MODOS.desafio.desde)).toBeGreaterThan(madresNoche(9, MODOS.muyFacil.desde));
+    expect(madresNoche(1000, MODOS.normal.desde)).toBeGreaterThan(madresNoche(100, MODOS.normal.desde));
   });
 });
 
@@ -98,6 +112,30 @@ describe('mapa', () => {
 
   it('más materiales en Muy fácil que en Desafío', () => {
     expect(generarMapa(9, 2, MODOS.muyFacil.materiales).materiales.length).toBeGreaterThan(generarMapa(9, 2, MODOS.desafio.materiales).materiales.length);
+  });
+
+  it('las madres y los perdidos', () => {
+    const mapa = generarMapa(77, 12, 1, 3);
+    expect(mapa.madres).toHaveLength(3);
+    expect(mapa.madres[0]).toEqual({ x: 0, z: 0 });
+    expect(mapa.perdidos).toHaveLength(escalaNoche(12).perdidos);
+    for (const p of mapa.perdidos) {
+      for (const m of mapa.madres) expect(Math.hypot(p.x - m.x, p.z - m.z)).toBeGreaterThanOrEqual(DISTANCIA_PERDIDO);
+      expect(p.madre).toBeLessThan(3);
+    }
+    // Hay animalitos entre los perdidos de muchas noches.
+    const especies = new Set(Array.from({ length: 20 }, (_, i) => generarMapa(i + 1, 9).perdidos.map((p) => p.especie)).flat());
+    expect(especies.has('persona')).toBe(true);
+    expect([...especies].some((e) => ANIMALES.includes(e))).toBe(true);
+  });
+
+  it('la rejilla de choques da lo mismo que revisar todos los obstáculos', () => {
+    const mapa = generarMapa(31, 4);
+    for (const o of mapa.obstaculos.slice(0, 40)) {
+      const a = { x: o.x + 0.2, z: o.z + 0.1 };
+      resolverChoques(a, 0.3, mapa);
+      expect(Math.hypot(a.x - o.x, a.z - o.z)).toBeGreaterThanOrEqual(o.r + 0.3 - 1e-6);
+    }
   });
 
   it('los choques sacan del obstáculo y del borde', () => {
@@ -191,23 +229,93 @@ describe('partida', () => {
     expect(j.antorcha).toBe(0);
   });
 
-  it('se llega al amanecer quedándose en la luz', () => {
+  it('quedarse en la luz sin rescatar a nadie no da el amanecer', () => {
     const p = new Partida({ nivel: 1, semilla: 3, modo: MODOS.muyFacil });
     p.luces[0].combustible = 1000;
     p.luces[0].nivel = 5;
     simular(p, p.duracion + 1);
+    expect(p.fase).toBe('fin');
+    expect(p.resumen?.motivo).toBe('rescate');
+    expect(p.resumen!.brasas).toBe(0);
+  });
+
+  it('con los salvados que pide la noche, amanece', () => {
+    const p = new Partida({ nivel: 1, semilla: 3, modo: MODOS.muyFacil });
+    p.luces[0].combustible = 1000;
+    p.luces[0].nivel = 5;
+    // Se trae a mano a uno de los perdidos de la madre del campamento.
+    const per = p.personas.find((x) => x.madre === 0)!;
+    per.x = p.jugador.x + 0.5;
+    per.z = p.jugador.z;
+    simular(p, 1);
+    expect(per.estado).toBe('salvada');
+    simular(p, p.duracion + 1);
     expect(p.fase).toBe('amanecer');
-    expect(p.resumen?.amanecer).toBe(true);
+    expect(p.resumen?.salvados).toBeGreaterThanOrEqual(p.objetivo);
     expect(p.resumen!.brasas).toBeGreaterThan(0);
+  });
+
+  it('los perdidos te siguen y solo quedan a salvo en la luz de su madre', () => {
+    const p = new Partida({ nivel: 10, semilla: 5, modo: MODOS.normal });
+    expect(p.madres.length).toBe(2);
+    const otra = p.madres[1];
+    otra.combustible = 500;
+    const per = p.personas.find((x) => x.madre === 0)!;
+    // Lejos de todo: al tocarla te sigue.
+    p.jugador.x = per.x;
+    p.jugador.z = per.z + 0.8;
+    simular(p, PASO);
+    expect(per.estado).toBe('sigue');
+    expect(p.siguiendo).toContain(per);
+    // En la luz de otra madre no queda salvada.
+    per.x = otra.x + 1;
+    per.z = otra.z;
+    p.jugador.x = otra.x + 1.5;
+    p.jugador.z = otra.z;
+    simular(p, PASO);
+    expect(per.estado).toBe('sigue');
+    // En la de la suya, sí.
+    per.x = p.madres[0].x + 1;
+    per.z = p.madres[0].z;
+    p.jugador.x = 1.5;
+    p.jugador.z = 0;
+    p.madres[0].combustible = 500;
+    simular(p, PASO);
+    expect(per.estado).toBe('salvada');
+  });
+
+  it('si su madre queda en brasa, los salvados se congelan', () => {
+    const p = nueva();
+    const per = p.personas[0];
+    per.estado = 'salvada';
+    per.madre = 0;
+    per.x = 2;
+    per.z = 0;
+    p.madres[0].combustible = 0;
+    simular(p, 12);
+    expect(per.estado).toBe('muerta');
+  });
+
+  it('la noche termina en cuanto ya no se puede llegar al objetivo', () => {
+    const p = nueva();
+    for (const per of p.personas) per.estado = 'muerta';
+    simular(p, PASO);
+    expect(p.fase).toBe('fin');
+    expect(p.resumen?.motivo).toBe('rescate');
+  });
+
+  it('la antorcha dura 25 s sin mejoras', () => {
+    expect(nueva().jugador.antorchaMax).toBe(25);
   });
 
   it('se recogen materiales al pasar por encima', () => {
     const p = nueva();
     const m = p.mapa.materiales[0];
+    const antes = p.inv[m.tipo];
     p.jugador.x = m.x;
     p.jugador.z = m.z;
     simular(p, PASO);
-    expect(p.inv[m.tipo]).toBeGreaterThanOrEqual(m.tipo === 'ramas' ? 5 : 1);
+    expect(p.inv[m.tipo]).toBeGreaterThan(antes);
   });
 
   it('construir un soporte cuesta materiales y lo enciende con el combustible que llevas', () => {
@@ -263,11 +371,24 @@ describe('guardado y configuración', () => {
     expect(limpiarNombre('  <b>  ')).toBeNull();
   });
 
-  it('al amanecer se pasa de noche y queda el récord; al caer se repite', () => {
-    const g = guardadoNuevo();
-    expect(anotarNoche(g, { nivel: 1, amanecer: false, abatidos: 2, recogidos: 3, brasas: 4 }, 'Ana')).toBe(false);
+  it('al perder todo empieza de nuevo, pero quedan los récords', () => {
+    const g = guardadoNuevo(1);
+    anotarNoche(g, { nivel: 1, amanecer: true, abatidos: 5, recogidos: 3, brasas: 30, salvados: 2 }, 'Ana');
+    g.taller.linterna = 2;
+    expect(g.nivel).toBe(2);
+    const semilla = g.semilla;
+    expect(anotarNoche(g, { nivel: 2, amanecer: false, abatidos: 2, recogidos: 3, brasas: 0 }, 'Ana', 999)).toBe(false);
     expect(g.nivel).toBe(1);
-    expect(g.brasas).toBe(4);
+    expect(g.brasas).toBe(0);
+    expect(g.taller).toEqual(tallerVacio());
+    expect(g.semilla).not.toBe(semilla);
+    expect(g.records).toHaveLength(1);
+    expect(g.estadisticas.salvados).toBe(2);
+    expect(g.estadisticas.caidas).toBe(1);
+  });
+
+  it('al amanecer se pasa de noche y queda el récord', () => {
+    const g = guardadoNuevo();
     expect(anotarNoche(g, { nivel: 1, amanecer: true, abatidos: 5, recogidos: 3, brasas: 10 }, 'Ana')).toBe(true);
     expect(g.nivel).toBe(2);
     expect(g.records).toHaveLength(1);

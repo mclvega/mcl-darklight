@@ -52,6 +52,8 @@ export interface Luz {
   combustible: number;
   /** La Hoguera madre nunca se apaga del todo (queda en brasa, pero la brasa no protege). */
   madre: boolean;
+  /** Índice de la Hoguera madre (su color); -1 en los soportes. */
+  indice: number;
   /** Último combustible usado: da el color de la llama. */
   tipo: IdCombustible;
   /** Radio extra de la Hoguera madre (Taller). */
@@ -99,9 +101,27 @@ export function avivar(l: Luz, tipo: IdCombustible, multiplicador = 1): boolean 
   return true;
 }
 
-/** Quema combustible con el paso del tiempo. */
-export function consumir(l: Luz, dt: number): void {
-  if (l.combustible > 0) l.combustible = Math.max(0, l.combustible - dt * consumo(l.nivel));
+/** Quema combustible con el paso del tiempo (`factor` > 1 si calienta a más gente). */
+export function consumir(l: Luz, dt: number, factor = 1): void {
+  if (l.combustible > 0) l.combustible = Math.max(0, l.combustible - dt * consumo(l.nivel) * factor);
+}
+
+/** Color de cada Hoguera madre: las personas perdidas llevan el de la suya. */
+export const COLORES_MADRE = [
+  { nombre: 'roja', color: 0xe53935, css: '#ff5a50' },
+  { nombre: 'azul', color: 0x1e88e5, css: '#4aa8ff' },
+  { nombre: 'verde', color: 0x43a047, css: '#5ad15a' },
+  { nombre: 'morada', color: 0x8e24aa, css: '#c070ff' },
+  { nombre: 'amarilla', color: 0xfdd835, css: '#ffe04a' },
+] as const;
+
+export const colorMadre = (i: number) => COLORES_MADRE[((i % COLORES_MADRE.length) + COLORES_MADRE.length) % COLORES_MADRE.length];
+
+/** «Hoguera roja», «Hoguera azul 2»… (con una sola madre, «Hoguera madre»). */
+export function nombreMadre(i: number, total: number): string {
+  if (total <= 1) return 'Hoguera madre';
+  const vuelta = Math.floor(i / COLORES_MADRE.length);
+  return `Hoguera ${colorMadre(i).nombre}${vuelta > 0 ? ` ${vuelta + 1}` : ''}`;
 }
 
 export type Coste = Partial<Record<IdMaterial, number>>;

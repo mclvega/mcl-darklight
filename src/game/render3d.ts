@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { AVISO_APAGADO, COLOR_LUZ, MATERIALES, MATERIALES_ORDEN, radioLuz, type IdMaterial, type Luz } from '../core/luces';
+import { AVISO_APAGADO, COLOR_LUZ, colorMadre, MATERIALES, MATERIALES_ORDEN, radioLuz, type IdMaterial, type Luz } from '../core/luces';
+import type { Especie } from '../core/mapa';
 import { MONSTRUOS, type TipoMonstruo } from '../core/monstruos';
 import { animateWalk, createAvatar, type Look } from './characters';
-import { caida, RADIO_DESTELLO, type Monstruo, type Partida } from './logica';
+import { caida, RADIO_DESTELLO, type Monstruo, type Partida, type Persona } from './logica';
+import { randomLook } from './look';
 
 /*
  * Dibujo de la noche con three.js.
@@ -103,6 +105,10 @@ const G = {
   anillo: new THREE.RingGeometry(0.92, 1, 40).rotateX(-Math.PI / 2),
   ojo: new THREE.SphereGeometry(0.07, 6, 4),
   palo: new THREE.CylinderGeometry(0.035, 0.045, 0.5, 6).translate(0, 0.1, 0),
+  mastil: new THREE.CylinderGeometry(0.04, 0.05, 2.4, 6).translate(0, 1.2, 0),
+  bandera: new THREE.PlaneGeometry(0.8, 0.5).translate(0.4, 0, 0),
+  candil: new THREE.SphereGeometry(0.08, 8, 6),
+  collar: new THREE.TorusGeometry(0.1, 0.025, 4, 10).rotateX(Math.PI / 2),
   fuegoAntorcha: new THREE.ConeGeometry(0.1, 0.3, 6).translate(0, 0.15, 0),
 };
 
@@ -116,7 +122,67 @@ const GEO_MATERIAL: Record<IdMaterial, THREE.BufferGeometry> = {
   estrella: new THREE.OctahedronGeometry(0.18, 0),
 };
 
-const MAX_MATERIALES = 400;
+/** Pelaje de cada animalito. */
+const PELAJE: Record<Exclude<Especie, 'persona'>, [number, number]> = {
+  perro: [0x9c6b45, 0x5d3a22],
+  gato: [0xe08a3c, 0x8a4a1c],
+  conejo: [0xeeeae4, 0xd8a0a8],
+};
+
+/** Animalito low-poly (primitivas, Lambert y ojos esféricos) con un collar del color de su madre. */
+function crearAnimal(especie: Exclude<Especie, 'persona'>, collar: number): THREE.Group {
+  const [c1, c2] = PELAJE[especie];
+  const piel = lambert(c1);
+  const piel2 = lambert(c2);
+  const g = new THREE.Group();
+  const ojo = (x: number, y: number, z: number) => g.add(malla(G.ojo, lambert(0x111111), x, y, z));
+  const patas = (alto: number, ancho: number, largo: number) => {
+    for (const x of [-ancho, ancho]) {
+      for (const z of [-largo, largo]) g.add(malla(new THREE.CylinderGeometry(0.045, 0.04, alto, 5).translate(0, alto / 2, 0), piel2, x, 0, z));
+    }
+  };
+  if (especie === 'perro') {
+    g.add(malla(new THREE.CapsuleGeometry(0.16, 0.36, 3, 8).rotateX(Math.PI / 2), piel, 0, 0.4, 0));
+    g.add(malla(new THREE.SphereGeometry(0.15, 8, 6), piel, 0, 0.58, 0.3));
+    g.add(malla(new THREE.BoxGeometry(0.1, 0.08, 0.14), piel2, 0, 0.53, 0.44));
+    for (const x of [-0.1, 0.1]) g.add(malla(new THREE.BoxGeometry(0.06, 0.14, 0.04), piel2, x, 0.66, 0.26));
+    const cola = malla(new THREE.CylinderGeometry(0.03, 0.02, 0.24, 5), piel2, 0, 0.5, -0.32);
+    cola.rotation.x = -0.8;
+    g.add(cola);
+    patas(0.26, 0.09, 0.15);
+    ojo(-0.06, 0.62, 0.43);
+    ojo(0.06, 0.62, 0.43);
+    g.add(malla(G.collar, lambert(collar), 0, 0.47, 0.25));
+  } else if (especie === 'gato') {
+    g.add(malla(new THREE.CapsuleGeometry(0.12, 0.28, 3, 8).rotateX(Math.PI / 2), piel, 0, 0.3, 0));
+    g.add(malla(new THREE.SphereGeometry(0.13, 8, 6), piel, 0, 0.45, 0.24));
+    for (const x of [-0.07, 0.07]) g.add(malla(new THREE.ConeGeometry(0.04, 0.1, 4), piel2, x, 0.58, 0.24));
+    const cola = malla(new THREE.CylinderGeometry(0.025, 0.02, 0.36, 5).translate(0, 0.18, 0), piel2, 0, 0.32, -0.24);
+    cola.rotation.x = -0.4;
+    g.add(cola);
+    patas(0.2, 0.07, 0.12);
+    ojo(-0.05, 0.48, 0.35);
+    ojo(0.05, 0.48, 0.35);
+    g.add(malla(G.collar, lambert(collar), 0, 0.36, 0.2));
+  } else {
+    g.add(malla(new THREE.SphereGeometry(0.17, 8, 6), piel, 0, 0.2, 0));
+    g.add(malla(new THREE.SphereGeometry(0.12, 8, 6), piel, 0, 0.36, 0.14));
+    for (const x of [-0.05, 0.05]) {
+      const oreja = malla(new THREE.CapsuleGeometry(0.03, 0.18, 3, 6), piel2, x, 0.56, 0.12);
+      oreja.rotation.z = x * 2;
+      g.add(oreja);
+    }
+    g.add(malla(new THREE.SphereGeometry(0.06, 6, 4), lambert(0xffffff), 0, 0.22, -0.18));
+    ojo(-0.05, 0.39, 0.24);
+    ojo(0.05, 0.39, 0.24);
+    g.add(malla(G.collar, lambert(collar), 0, 0.28, 0.1));
+  }
+  return g;
+}
+
+const MAX_MATERIALES = 1200;
+/** Lado (en metros) de la ventana del mapa de luz, que sigue a la cámara: así el mapa puede ser enorme. */
+const VENTANA_LUZ = 80;
 let matAla: THREE.MeshLambertMaterial | undefined;
 const MAX_CHISPAS = 120;
 
@@ -134,6 +200,13 @@ interface Monstruo3D {
   cuerpo: THREE.Group;
   ojos: THREE.Mesh[];
   alas: THREE.Mesh[];
+}
+
+interface Persona3D {
+  grupo: THREE.Group;
+  cuerpo: THREE.Object3D;
+  candil: THREE.Mesh;
+  animal: boolean;
 }
 
 /** Proyección de un punto del mundo a la pantalla. */
@@ -159,6 +232,10 @@ export class Render3D {
   private desechables: THREE.BufferGeometry[] = [];
   private luces3d = new Map<number, Luz3D>();
   private monstruos3d = new Map<number, Monstruo3D>();
+  private personas3d = new Map<number, Persona3D>();
+  /** Esquina de la ventana del mapa de luz en el mundo. */
+  private origenX = 0;
+  private origenZ = 0;
   private materiales3d = new Map<IdMaterial, THREE.InstancedMesh>();
   private brillos: THREE.InstancedMesh;
   private chispas: THREE.InstancedMesh;
@@ -254,17 +331,28 @@ export class Render3D {
     this.luces3d.clear();
     for (const m of this.monstruos3d.values()) this.escena.remove(m.grupo);
     this.monstruos3d.clear();
+    for (const v of this.personas3d.values()) {
+      this.escena.remove(v.grupo);
+      v.grupo.traverse((o) => {
+        const g = (o as THREE.Mesh).geometry;
+        if (g && !(Object.values(G) as THREE.BufferGeometry[]).includes(g)) g.dispose();
+      });
+    }
+    this.personas3d.clear();
 
     const medio = p.mapa.medio;
     const suelo = malla(new THREE.PlaneGeometry(medio * 2 + 60, medio * 2 + 60).rotateX(-Math.PI / 2), lambert(0x34442c));
     suelo.receiveShadow = true;
     this.desechables.push(suelo.geometry);
     this.mundo.add(suelo);
-    // Camino de tierra alrededor de la Hoguera madre.
-    const claro = malla(new THREE.CircleGeometry(5.5, 24).rotateX(-Math.PI / 2), lambert(0x5a4a36), 0, 0.01, 0);
-    claro.receiveShadow = true;
-    this.desechables.push(claro.geometry);
-    this.mundo.add(claro);
+    // Camino de tierra alrededor de cada Hoguera madre.
+    const geoClaro = new THREE.CircleGeometry(5.5, 24).rotateX(-Math.PI / 2);
+    this.desechables.push(geoClaro);
+    for (const m of p.mapa.madres) {
+      const claro = malla(geoClaro, lambert(0x5a4a36), m.x, 0.01, m.z);
+      claro.receiveShadow = true;
+      this.mundo.add(claro);
+    }
 
     // Árboles del mapa y un anillo de bosque cerrado fuera del borde.
     const arboles = p.mapa.obstaculos.filter((o) => o.tipo === 'arbol').map((o) => ({ x: o.x, z: o.z, s: o.escala * (o.r / 0.6), g: o.giro }));
@@ -287,8 +375,8 @@ export class Render3D {
     this.instanciar(G.pilar, lambert(0x8a8070), ruinas.map((o) => ({ x: o.x, z: o.z, s: o.r * 1.4, sy: 0.6 + o.escala * 1.6, g: o.giro })));
     oscurecerTodo(this.mundo);
 
-    // Mapa de luz.
-    this.lado = medio * 2 + 8;
+    // Mapa de luz: una ventana fija que sigue a la cámara (se recoloca en cada fotograma).
+    this.lado = VENTANA_LUZ;
     const n = this.resolucion;
     this.datos = new Uint8Array(n * n * 4);
     this.acum = new Float32Array(n * n * 3);
@@ -299,7 +387,6 @@ export class Render3D {
     this.tex.wrapS = this.tex.wrapT = THREE.ClampToEdgeWrapping;
     this.tex.needsUpdate = true;
     U.uLuz.value = this.tex;
-    U.uOrigen.value.set(-this.lado / 2, -this.lado / 2);
     U.uTam.value = this.lado;
   }
 
@@ -324,6 +411,11 @@ export class Render3D {
     grupo.position.set(l.x, 0, l.z);
     const piedra = lambert(0x77736c);
     if (l.madre) {
+      // Estandarte del color de la madre (las personas perdidas llevan el mismo color).
+      const mastil = malla(G.mastil, lambert(0x4a3a2c), 1.3, 0, -0.6);
+      // La bandera mira a la cámara y no se oscurece: se distingue de lejos.
+      mastil.add(malla(G.bandera, basico(colorMadre(l.indice).color), 0, 2.1, 0));
+      grupo.add(mastil);
       for (let i = 0; i < 9; i++) {
         const a = (i / 9) * Math.PI * 2;
         const s = malla(G.piedraMadre, piedra, Math.cos(a) * 0.85, 0.15, Math.sin(a) * 0.85);
@@ -455,16 +547,19 @@ export class Render3D {
     if (r <= 0 || intensidad <= 0) return;
     const n = this.resolucion;
     const paso = this.lado / n;
-    const o = -this.lado / 2;
-    const i0 = Math.max(0, Math.floor((x - r - o) / paso));
-    const i1 = Math.min(n - 1, Math.ceil((x + r - o) / paso));
-    const j0 = Math.max(0, Math.floor((z - r - o) / paso));
-    const j1 = Math.min(n - 1, Math.ceil((z + r - o) / paso));
+    const ox = this.origenX;
+    const oz = this.origenZ;
+    // El borde de la ventana queda siempre a oscuras (la textura lo repite hacia fuera).
+    const i0 = Math.max(1, Math.floor((x - r - ox) / paso));
+    const i1 = Math.min(n - 2, Math.ceil((x + r - ox) / paso));
+    const j0 = Math.max(1, Math.floor((z - r - oz) / paso));
+    const j1 = Math.min(n - 2, Math.ceil((z + r - oz) / paso));
+    if (i0 > i1 || j0 > j1) return;
     const a = this.acum;
     for (let j = j0; j <= j1; j++) {
-      const wz = o + (j + 0.5) * paso;
+      const wz = oz + (j + 0.5) * paso;
       for (let i = i0; i <= i1; i++) {
-        const b = caida(Math.hypot(o + (i + 0.5) * paso - x, wz - z), r) * intensidad;
+        const b = caida(Math.hypot(ox + (i + 0.5) * paso - x, wz - z), r) * intensidad;
         if (b <= 0) continue;
         const k = (j * n + i) * 3;
         // Las luces se suman (con tope) para que dos luces juntas iluminen más.
@@ -477,6 +572,13 @@ export class Render3D {
 
   private actualizarMapaLuz(p: Partida, jx: number, jz: number, animaciones: boolean) {
     this.acum.fill(0);
+    // La ventana sigue a la cámara, ajustada a la rejilla de texels para que la luz no tiemble.
+    const paso = this.lado / this.resolucion;
+    this.origenX = Math.round((this.camX - this.lado / 2) / paso) * paso;
+    this.origenZ = Math.round((this.camZ - 4 - this.lado / 2) / paso) * paso;
+    U.uOrigen.value.set(this.origenX, this.origenZ);
+    // Candil débil de los perdidos, para distinguirlos a lo lejos.
+    for (const per of p.personas) if (per.estado === 'perdida') this.pintarLuz(per.x, per.z, 1.2, [1, 0.8, 0.45], 0.7);
     for (const l of p.luces) {
       let r = radioLuz(l);
       if (r <= 0) continue;
@@ -540,6 +642,7 @@ export class Render3D {
     this.dibujarLuces(p, opciones.animaciones);
     this.dibujarMateriales(p, opciones.brillo);
     this.dibujarMonstruos(p, alfa, dt);
+    this.dibujarPersonas(p, alfa, dt);
     this.dibujarDestellos(p);
     this.actualizarMapaLuz(p, jx, jz, opciones.animaciones);
     U.uActivo.value = 1;
@@ -680,6 +783,61 @@ export class Render3D {
         if (g && !(Object.values(G) as THREE.BufferGeometry[]).includes(g)) g.dispose();
       });
       this.monstruos3d.delete(id);
+    }
+  }
+
+  /** Persona (avatar del Arcade con la camisa del color de su madre) o animalito low-poly con collar. */
+  private crearPersona(per: Persona): Persona3D {
+    const color = colorMadre(per.madre).color;
+    const candil = malla(G.candil, basico(0xffd27a));
+    let grupo: THREE.Group;
+    let cuerpo: THREE.Object3D;
+    if (per.especie === 'persona') {
+      const av = createAvatar({ ...randomLook(), shirt: color });
+      oscurecerTodo(av.group);
+      grupo = av.group;
+      cuerpo = av.body;
+      candil.position.set(0.3, 0.45, 0.2);
+    } else {
+      grupo = new THREE.Group();
+      cuerpo = crearAnimal(per.especie, color);
+      grupo.add(cuerpo);
+      candil.position.set(0, 0.55, 0.35);
+    }
+    cuerpo.add(candil);
+    grupo.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o !== candil) o.castShadow = true;
+    });
+    this.escena.add(grupo);
+    return { grupo, cuerpo, candil, animal: per.especie !== 'persona' };
+  }
+
+  private dibujarPersonas(p: Partida, alfa: number, dt: number) {
+    for (const per of p.personas) {
+      let v = this.personas3d.get(per.id);
+      if (!v) {
+        v = this.crearPersona(per);
+        this.personas3d.set(per.id, v);
+      }
+      const muerta = per.estado === 'muerta';
+      v.grupo.visible = !muerta || per.muerte < 0.8;
+      if (!v.grupo.visible) continue;
+      v.grupo.position.set(per.px + (per.x - per.px) * alfa, 0, per.pz + (per.z - per.pz) * alfa);
+      let dif = per.yaw - v.grupo.rotation.y;
+      dif = Math.atan2(Math.sin(dif), Math.cos(dif));
+      v.grupo.rotation.y += dif * Math.min(1, dt * 10);
+      v.grupo.scale.setScalar(muerta ? Math.max(0.01, 1 - per.muerte / 0.8) : 1);
+      v.candil.visible = per.estado === 'perdida';
+      const perdida = per.estado === 'perdida';
+      if (v.animal) v.cuerpo.position.y = per.moviendose ? Math.abs(Math.sin(this.t * 14 + per.id)) * 0.08 : 0;
+      else {
+        animateWalk(v.cuerpo, this.t, per.moviendose);
+        v.cuerpo.rotation.x = perdida ? 0.35 : 0;
+        if (perdida) v.cuerpo.position.y = -0.12;
+      }
+      // Perdidos: agachados y temblando de miedo. Parpadean al recibir un golpe.
+      if (perdida) v.cuerpo.rotation.z = Math.sin(this.t * 25 + per.id) * 0.04;
+      if (per.invulnerable > 0) v.grupo.visible = Math.floor(this.t * 20) % 2 === 0;
     }
   }
 
