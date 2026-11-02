@@ -19,16 +19,16 @@ export interface DefMonstruo {
 }
 
 export const MONSTRUOS: Record<TipoMonstruo, DefMonstruo> = {
-  sombra: { nombre: 'Sombra', vida: 30, velocidad: 3.9, dano: 10, radio: 0.4, desde: 1, peso: 6, ojos: 0xff3030 },
-  acechador: { nombre: 'Acechador', vida: 90, velocidad: 2.5, dano: 22, radio: 0.7, desde: 2, peso: 2, ojos: 0xffb020 },
-  apagador: { nombre: 'Apagador', vida: 55, velocidad: 3, dano: 12, radio: 0.5, desde: 3, peso: 2, ojos: 0xc060ff },
-  polilla: { nombre: 'Polilla', vida: 18, velocidad: 4.4, dano: 6, radio: 0.35, desde: 5, peso: 2, ojos: 0xffffff },
+  sombra: { nombre: 'Sombra', vida: 34, velocidad: 4.2, dano: 13, radio: 0.4, desde: 1, peso: 6, ojos: 0xff3030 },
+  acechador: { nombre: 'Acechador', vida: 100, velocidad: 2.7, dano: 26, radio: 0.7, desde: 2, peso: 2, ojos: 0xffb020 },
+  apagador: { nombre: 'Apagador', vida: 60, velocidad: 3.2, dano: 14, radio: 0.5, desde: 2, peso: 2, ojos: 0xc060ff },
+  polilla: { nombre: 'Polilla', vida: 18, velocidad: 4.6, dano: 8, radio: 0.35, desde: 4, peso: 2, ojos: 0xffffff },
 };
 
 export const TIPOS_MONSTRUO = Object.keys(MONSTRUOS) as TipoMonstruo[];
 
 /** Combustible que quita un Apagador por segundo y una Polilla al estallar. */
-export const DRENAJE_APAGADOR = 5;
+export const DRENAJE_APAGADOR = 6;
 export const ESTALLIDO_POLILLA = 20;
 
 /** Sortea el tipo de un monstruo nuevo según la noche (con `azar` de 0 a 1). */

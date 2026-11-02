@@ -31,7 +31,7 @@ export function efectosTaller(t: Taller) {
   return {
     radioLinterna: 2.4 + t.linterna * 0.3,
     aceiteLinterna: 60 + t.linterna * 15,
-    ramasIniciales: 4 + t.bolsillos * 2,
+    ramasIniciales: 3 + t.bolsillos * 2,
     descuento: t.constructor,
     recargaDestello: 6 - t.destello * 0.6,
     danoDestello: 25 + t.destello * 6,

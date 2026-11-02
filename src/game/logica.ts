@@ -144,7 +144,7 @@ export class Partida {
     this.rng = crearRng(semilla ^ 0x5bd1e995);
     this.mapa = generarMapa(semilla, o.nivel, o.modo.materiales);
     this.materialesIniciales = this.mapa.materiales.length;
-    this.luces.push({ id: this.siguienteId++, x: 0, z: 0, nivel: 1, combustible: 60 * o.modo.combustible, madre: true, tipo: 'ramas', extra: this.efectos.radioMadre });
+    this.luces.push({ id: this.siguienteId++, x: 0, z: 0, nivel: 1, combustible: 45 * o.modo.combustible, madre: true, tipo: 'ramas', extra: this.efectos.radioMadre });
     for (const s of this.mapa.soportes) this.luces.push({ id: this.siguienteId++, x: s.x, z: s.z, nivel: 1, combustible: 0, madre: false, tipo: 'ramas', extra: 0 });
     this.jugador = {
       x: 0, z: 1.8, px: 0, pz: 1.8, yaw: 0, vida: 100, vidaMax: 100,
@@ -244,7 +244,7 @@ export class Partida {
     j.enLuz = !!luz;
     if (luz) {
       // Dentro de una luz se recupera la vida y la linterna se rellena.
-      j.vida = Math.min(j.vidaMax, j.vida + 6 * dt);
+      j.vida = Math.min(j.vidaMax, j.vida + 4 * dt);
       j.linterna = Math.min(j.linternaMax, j.linterna + 20 * dt);
     } else j.linterna = Math.max(0, j.linterna - dt);
     // Luz al alcance para avivar o mejorar.
@@ -369,7 +369,7 @@ export class Partida {
     this.relojAparicion -= dt;
     const vivos = this.monstruos.filter((m) => m.muerte < 0).length;
     if (this.relojAparicion > 0 || vivos >= this.objetivoMonstruos) return;
-    this.relojAparicion = Math.max(0.5, 1.6 - this.nivel * 0.05);
+    this.relojAparicion = Math.max(0.4, 1.3 - this.nivel * 0.05);
     const j = this.jugador;
     for (let intento = 0; intento < 12; intento++) {
       const a = this.rng.rango(0, Math.PI * 2);

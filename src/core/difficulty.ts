@@ -34,11 +34,11 @@ export function escalaNoche(nivel: number) {
     /** Duración de la noche en segundos. */
     duracion: Math.min(300, 120 + n * 10),
     /** Monstruos a la vez al empezar y al final de la noche. */
-    minimo: Math.min(14, 3 + Math.floor(n * 0.6)),
-    maximo: Math.min(34, 6 + Math.floor(n * 1.5)),
-    vida: 1 + n * 0.12,
-    dano: 1 + n * 0.08,
-    velocidad: Math.min(1.4, 1 + n * 0.02),
+    minimo: Math.min(16, 4 + Math.floor(n * 0.8)),
+    maximo: Math.min(40, 8 + Math.floor(n * 2)),
+    vida: 1 + n * 0.16,
+    dano: 1 + n * 0.1,
+    velocidad: Math.min(1.45, 1.05 + n * 0.025),
     /** Lado del mapa en metros. */
     lado: Math.min(110, 56 + n * 4),
   };

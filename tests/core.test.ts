@@ -125,14 +125,14 @@ describe('partida', () => {
     expect(radioLuz(madre)).toBeGreaterThan(5);
     simular(p, 0.1);
     expect(p.jugador.enLuz).toBe(true);
-    expect(p.inv.ramas).toBe(4);
+    expect(p.inv.ramas).toBe(3);
   });
 
   it('avivar la madre gasta un combustible', () => {
     const p = nueva();
     const antes = p.luces[0].combustible;
     simular(p, PASO, { avivar: true });
-    expect(p.inv.ramas).toBe(3);
+    expect(p.inv.ramas).toBe(2);
     expect(p.luces[0].combustible).toBeGreaterThan(antes);
   });
 
@@ -175,6 +175,7 @@ describe('partida', () => {
     p.jugador.z = 15;
     p.luces.splice(1);
     p.inv.piedra = 1;
+    p.inv.ramas = 5;
     simular(p, PASO, { construir: true });
     expect(p.luces.length).toBe(2);
     expect(p.inv.piedra).toBe(0);
@@ -202,7 +203,7 @@ describe('taller', () => {
     t.linterna = 2;
     t.bolsillos = 1;
     expect(efectosTaller(t).radioLinterna).toBeGreaterThan(base.radioLinterna);
-    expect(efectosTaller(t).ramasIniciales).toBe(6);
+    expect(efectosTaller(t).ramasIniciales).toBe(5);
     expect(costeTaller(1)).toBeGreaterThan(costeTaller(0));
   });
 });
